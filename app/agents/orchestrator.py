@@ -1,6 +1,7 @@
 from typing import Literal
 from pydantic import BaseModel
 from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import AIMessage
 from app.agents.state import AgentState
 from app.prompts.loader import load_prompt
 
@@ -23,14 +24,24 @@ def orchestrator_node(state: AgentState) -> AgentState:
     - Route to order when the customer confirms they want to place an order
     - Route to escalation when human intervention is needed
 
-    Uses Claude with structured output to make the routing decision.
+    If the last message is already an AI response (i.e. a specialized agent just
+    finished), we end the turn immediately — no need to call the LLM again with a
+    conversation that ends in an assistant message (Anthropic rejects that).
     """
+    messages = state["messages"]
+
+    # A specialized agent already produced the final reply — end the turn.
+    last = messages[-1] if messages else None
+    if isinstance(last, AIMessage) and not getattr(last, "tool_calls", None):
+        return {"messages": [], "next_agent": "end"}
+
+    # Normal path: ask the LLM to decide what to do next.
     structured_llm = llm.with_structured_output(RouteDecision)
     chain = prompt | structured_llm
 
-    decision: RouteDecision = chain.invoke({"messages": state["messages"]})
+    decision: RouteDecision = chain.invoke({"messages": messages})
 
-    # If ending the turn, add the reply to the conversation
+    # If ending the turn directly, add the reply to the conversation.
     new_messages = []
     if decision.next == "end":
         new_messages = [{"role": "assistant", "content": decision.message}]

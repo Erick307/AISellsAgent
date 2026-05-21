@@ -18,6 +18,10 @@ build/
 venv/
 env/
 
+# uv
+uv.lock
+.python-version
+
 # Google credentials (never commit these)
 credentials.json
 token.json

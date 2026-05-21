@@ -1,12 +1,12 @@
-from langchain_google_community.drive import GoogleDriveAPIWrapper
-from langchain_google_community import GoogleDriveSearchTool
+from langchain_core.tools import tool
+
+
+@tool
+def search_drive(query: str) -> str:
+    """Search for stock and price information in Google Drive."""
+    # TODO: implement real Google Drive integration
+    return f"[Drive stub] No results for: {query}"
 
 
 def get_drive_tools() -> list:
-    """
-    Returns LangChain Google Drive tools for the Stock & Catalog agent.
-    Credentials are loaded from the path set in GOOGLE_CREDENTIALS_PATH env var.
-    """
-    api_wrapper = GoogleDriveAPIWrapper()
-    drive_tool = GoogleDriveSearchTool(api_wrapper=api_wrapper)
-    return [drive_tool]
+    return [search_drive]

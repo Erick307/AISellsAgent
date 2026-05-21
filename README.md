@@ -28,22 +28,47 @@ app/
 
 ## Setup
 
-1. Clone the repo and create a virtual environment:
+1. Install dependencies with [uv](https://docs.astral.sh/uv/):
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
+   uv sync
    ```
 
-2. Copy `.env.example` to `.env` and fill in all values:
+2. Start the full stack (Postgres + Redis + Chatwoot) via Docker:
+   ```bash
+   docker-compose up -d
+   ```
+   - Chatwoot UI: http://localhost:3000
+   - Postgres: localhost:5432
+   - Redis: localhost:6379
+
+3. Copy `.env.example` to `.env` and fill in your credentials:
    ```bash
    cp .env.example .env
    ```
 
-3. Run the server:
+4. Run the agent server:
    ```bash
-   uvicorn app.main:app --reload
+   uv run uvicorn app.main:app --reload
    ```
+   - Agent API: http://localhost:8000
+   - Health check: http://localhost:8000/health
+
+## Testing with ngrok
+
+Use [ngrok](https://ngrok.com) to expose your local server so Chatwoot can reach your webhook (required for WhatsApp testing):
+
+```bash
+# Install ngrok (once)
+brew install ngrok
+
+# Expose the local agent server
+ngrok http 8000
+```
+
+Copy the `https://xxxx.ngrok.io` URL and set it as the webhook URL in Chatwoot:
+- Chatwoot → Settings → Integrations → Webhooks → New Webhook
+- URL: `https://xxxx.ngrok.io/webhooks/chatwoot`
+- Events: ✅ Message Created
 
 ## Updating agent prompts
 

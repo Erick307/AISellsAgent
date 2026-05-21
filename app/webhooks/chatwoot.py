@@ -4,7 +4,7 @@ import hmac
 import time
 from fastapi import APIRouter, Request, HTTPException
 from app.config import settings
-from app.agents.graph import get_graph
+from app.agents.graph import graph_manager
 from app.models.schemas import ChatwootWebhookPayload
 from app.services.chatwoot import send_message
 
@@ -77,7 +77,7 @@ async def chatwoot_webhook(request: Request):
     message_content = payload.content
 
     # Check escalation resume condition
-    graph = await get_graph()
+    graph = graph_manager.graph
     config = {"configurable": {"thread_id": customer_phone}}
     current_state = await graph.aget_state(config)
 
@@ -121,7 +121,7 @@ async def _debounced_process(
     """Waits for the debounce window, then runs the LangGraph graph."""
     await asyncio.sleep(settings.message_debounce_seconds)
 
-    graph = await get_graph()
+    graph = graph_manager.graph
     config = {"configurable": {"thread_id": customer_phone}}
 
     state = {

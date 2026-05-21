@@ -1,3 +1,4 @@
+import psycopg
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from app.agents.orchestrator import orchestrator_node, route_after_orchestrator
@@ -33,8 +34,6 @@ def build_graph(checkpointer: AsyncPostgresSaver) -> StateGraph:
     )
 
     # ── Specialized agents always return to orchestrator ───────────────────
-    # This allows multi-step flows:
-    # e.g. stock_catalog answers → orchestrator asks customer to confirm → order registers
     graph.add_edge("stock_catalog", "orchestrator")
     graph.add_edge("order", "orchestrator")
 
@@ -44,8 +43,37 @@ def build_graph(checkpointer: AsyncPostgresSaver) -> StateGraph:
     return graph.compile(checkpointer=checkpointer)
 
 
-async def get_graph():
-    """Returns a compiled graph with async Postgres checkpointing."""
-    checkpointer = AsyncPostgresSaver.from_conn_string(settings.postgres_url)
-    await checkpointer.setup()  # Creates checkpoint tables if they don't exist
-    return build_graph(checkpointer)
+def _pg_url() -> str:
+    """Convert SQLAlchemy URL to plain psycopg URL."""
+    return settings.postgres_url.replace("postgresql+asyncpg://", "postgresql://")
+
+
+class GraphManager:
+    """
+    Manages the LangGraph graph and its Postgres checkpointer.
+    Initialized once at app startup and reused across requests.
+    """
+
+    def __init__(self):
+        self._graph = None
+        self._conn = None
+
+    async def setup(self):
+        self._conn = await psycopg.AsyncConnection.connect(_pg_url(), autocommit=True)
+        checkpointer = AsyncPostgresSaver(self._conn)
+        await checkpointer.setup()
+        self._graph = build_graph(checkpointer)
+
+    async def teardown(self):
+        if self._conn:
+            await self._conn.close()
+
+    @property
+    def graph(self):
+        if self._graph is None:
+            raise RuntimeError("GraphManager not initialized. Call setup() first.")
+        return self._graph
+
+
+# Singleton — shared across the whole app
+graph_manager = GraphManager()
