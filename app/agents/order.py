@@ -11,11 +11,11 @@ prompt = load_prompt("order_agent")
 def order_node(state: AgentState) -> AgentState:
     """
     Handles order registration.
+    Only triggered after the customer has explicitly confirmed they want to place an order.
     Uses database tools to write confirmed orders and unmet demand to Postgres.
+    Returns result to the orchestrator — never ends the turn directly.
     """
     db_tools = get_database_tools()
     chain = prompt | llm.bind_tools(db_tools)
-    response = chain.invoke({
-        "messages": state["messages"],
-    })
+    response = chain.invoke({"messages": state["messages"]})
     return {"messages": [response]}

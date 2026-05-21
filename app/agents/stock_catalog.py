@@ -11,11 +11,10 @@ prompt = load_prompt("stock_catalog_agent")
 def stock_catalog_node(state: AgentState) -> AgentState:
     """
     Handles stock and price queries.
-    Uses GoogleDriveTool to read the client's Drive files.
+    Uses GoogleDriveTool to search and read the client's Drive files.
+    Returns result to the orchestrator — never ends the turn directly.
     """
     drive_tools = get_drive_tools()
     chain = prompt | llm.bind_tools(drive_tools)
-    response = chain.invoke({
-        "messages": state["messages"],
-    })
+    response = chain.invoke({"messages": state["messages"]})
     return {"messages": [response]}

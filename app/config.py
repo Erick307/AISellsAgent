@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     # Agent behavior
     message_debounce_seconds: int = 3
+    escalation_resume_hours: int = 2  # Hours of human inactivity before bot resumes
 
     class Config:
         env_file = ".env"

@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Optional
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
@@ -8,4 +8,5 @@ class AgentState(TypedDict):
     messages: Annotated[list, add_messages]  # Full conversation history
     conversation_id: str                      # Chatwoot conversation ID
     customer_phone: str                       # Customer's phone number (= thread_id)
-    next_agent: str                           # Set by supervisor to route to next agent
+    next_agent: str                           # Set by orchestrator to route to next agent
+    escalated_at: Optional[float]             # Timestamp when escalation happened (None if not escalated)
