@@ -3,21 +3,36 @@ from typing import Optional
 
 
 class ChatwootSender(BaseModel):
-    phone_number: Optional[str] = None
+    id: Optional[int] = None
     name: Optional[str] = None
+    type: Optional[str] = None        # "contact" for customer messages, "agent_bot" for bot
+    phone_number: Optional[str] = None
 
 
-class ChatwootMeta(BaseModel):
-    sender: ChatwootSender
+class ChatwootInbox(BaseModel):
+    id: int
+    name: Optional[str] = None
 
 
 class ChatwootConversation(BaseModel):
     id: int
+    display_id: Optional[int] = None
+    status: Optional[str] = None
+
+
+class ChatwootAccount(BaseModel):
+    id: int
+    name: Optional[str] = None
 
 
 class ChatwootWebhookPayload(BaseModel):
     event: str
-    message_type: Optional[str] = None
+    id: Optional[int] = None
     content: Optional[str] = None
+    message_type: Optional[str] = None   # "incoming" | "outgoing" | "activity"
+    content_type: Optional[str] = None
+    created_at: Optional[int] = None
+    sender: Optional[ChatwootSender] = None
+    inbox: Optional[ChatwootInbox] = None
     conversation: Optional[ChatwootConversation] = None
-    meta: Optional[ChatwootMeta] = None
+    account: Optional[ChatwootAccount] = None

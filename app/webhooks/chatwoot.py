@@ -5,6 +5,7 @@ import time
 from fastapi import APIRouter, Request, HTTPException
 from app.config import settings
 from app.agents.graph import get_graph
+from app.models.schemas import ChatwootWebhookPayload
 from app.services.chatwoot import send_message
 
 router = APIRouter()
@@ -16,12 +17,9 @@ _debounce_timers: dict[str, asyncio.Task] = {}
 # TODO: move to Postgres for persistence across server restarts
 _last_human_activity: dict[str, float] = {}
 
-# Hours of human inactivity before the bot takes back control after escalation
-ESCALATION_RESUME_HOURS = 2
-
 
 def verify_signature(payload: bytes, signature: str) -> bool:
-    """Validates the HMAC signature sent by Chatwoot."""
+    """Validates the HMAC-SHA256 signature sent by Chatwoot."""
     expected = hmac.new(
         settings.chatwoot_webhook_secret.encode(),
         payload,
@@ -32,34 +30,51 @@ def verify_signature(payload: bytes, signature: str) -> bool:
 
 @router.post("/chatwoot")
 async def chatwoot_webhook(request: Request):
-    payload = await request.body()
+    raw_body = await request.body()
     signature = request.headers.get("X-Chatwoot-Signature", "")
 
-    if not verify_signature(payload, signature):
+    if not verify_signature(raw_body, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     data = await request.json()
-    event = data.get("event")
 
-    # Track human agent activity (outgoing messages sent by a human in Chatwoot)
-    if event == "message_created":
-        message_type = data.get("message_type")
-        sender_type = data.get("sender", {}).get("type")
-        conversation_id = str(data["conversation"]["id"])
+    # Parse and validate the payload with Pydantic
+    try:
+        payload = ChatwootWebhookPayload(**data)
+    except Exception:
+        # Unknown payload shape — ignore gracefully
+        return {"status": "ignored"}
 
-        if message_type == "outgoing" and sender_type == "agent_bot" is False:
-            _last_human_activity[conversation_id] = time.time()
+    # Track last human agent activity for escalation resume logic
+    if (
+        payload.event == "message_created"
+        and payload.message_type == "outgoing"
+        and payload.sender
+        and payload.sender.type != "agent_bot"
+        and payload.conversation
+    ):
+        conversation_id = str(payload.conversation.id)
+        _last_human_activity[conversation_id] = time.time()
 
     # Only process incoming customer messages
-    if event != "message_created":
+    if payload.event != "message_created":
         return {"status": "ignored"}
 
-    if data.get("message_type") != "incoming":
+    if payload.message_type != "incoming":
         return {"status": "ignored"}
 
-    conversation_id = str(data["conversation"]["id"])
-    customer_phone = data["meta"]["sender"]["phone_number"]
-    message_content = data["content"]
+    # Validate required fields
+    if not payload.conversation or not payload.sender or not payload.content:
+        return {"status": "ignored"}
+
+    conversation_id = str(payload.conversation.id)
+    customer_phone = payload.sender.phone_number
+
+    if not customer_phone:
+        # No phone number — can't identify the customer
+        return {"status": "ignored", "reason": "no_phone_number"}
+
+    message_content = payload.content
 
     # Check escalation resume condition
     graph = await get_graph()
@@ -78,11 +93,11 @@ async def chatwoot_webhook(request: Request):
             (time.time() - last_human) / 3600 if last_human else float("inf")
         )
 
-        if hours_since_human < ESCALATION_RESUME_HOURS:
+        if hours_since_human < settings.escalation_resume_hours:
             # Human is still active — bot stays out
             return {"status": "escalated_human_active"}
 
-        # Human has been inactive long enough — clear escalation and resume
+        # Human has been inactive long enough — clear escalation and let bot resume
         await graph.aupdate_state(config, {"escalated_at": None})
 
     # Cancel existing debounce timer for this conversation if any

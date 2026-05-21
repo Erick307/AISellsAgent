@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     chatwoot_base_url: str
     chatwoot_api_token: str
     chatwoot_webhook_secret: str
+    chatwoot_account_id: int = 1
 
     # Google Drive
     google_credentials_path: str  # Path to OAuth/Service Account JSON file
