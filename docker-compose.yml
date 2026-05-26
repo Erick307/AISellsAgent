@@ -1,8 +1,8 @@
 services:
 
-  # ── Postgres ────────────────────────────────────────────────────────────
+  # ── Postgres (shared: LangGraph checkpoints + app business data) ────────
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: aisales_postgres
     restart: unless-stopped
     environment:
@@ -13,6 +13,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aisales -d aisalesagent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # ── Redis (required by Chatwoot) ────────────────────────────────────────
   redis:
@@ -26,12 +31,14 @@ services:
 
   # ── Chatwoot web ────────────────────────────────────────────────────────
   chatwoot:
-    image: chatwoot/chatwoot:latest
+    image: chatwoot/chatwoot:v4.8.0
     container_name: aisales_chatwoot
     restart: unless-stopped
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     ports:
       - "3000:3000"
     environment:
@@ -39,13 +46,13 @@ services:
       SECRET_KEY_BASE: f0def45d613eb2a8ba738f619759b1071ba7b1d3950240e26abdf043267d796ee5d54eec31abbb3e0bd6d00f423be89e217cef912745b3f5aeea7426a954b5a9
       FRONTEND_URL: http://localhost:3000
 
-      # Postgres
+      # Postgres (Chatwoot uses its own DB)
       DATABASE_URL: postgres://aisales:aisales@postgres:5432/chatwoot_production
 
       # Redis
       REDIS_URL: redis://redis:6379
 
-      # Mail (required by Chatwoot, use dummy values for local dev)
+      # Mail (dummy values for local dev)
       MAILER_SENDER_EMAIL: chatwoot@localhost
       SMTP_ADDRESS: localhost
       SMTP_PORT: 1025
@@ -56,12 +63,14 @@ services:
 
   # ── Chatwoot background jobs ────────────────────────────────────────────
   chatwoot_sidekiq:
-    image: chatwoot/chatwoot:latest
+    image: chatwoot/chatwoot:v4.8.0
     container_name: aisales_sidekiq
     restart: unless-stopped
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       RAILS_ENV: production
       SECRET_KEY_BASE: f0def45d613eb2a8ba738f619759b1071ba7b1d3950240e26abdf043267d796ee5d54eec31abbb3e0bd6d00f423be89e217cef912745b3f5aeea7426a954b5a9
@@ -71,6 +80,50 @@ services:
     command: bundle exec sidekiq -C config/sidekiq.yml
     volumes:
       - chatwoot_storage:/app/storage
+
+  # ── AI Sales Agent (FastAPI + LangGraph) ───────────────────────────────
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aisales_agent
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override DB URL to use the docker network hostname
+      POSTGRES_URL: postgresql+asyncpg://aisales:aisales@postgres:5432/aisalesagent
+    volumes:
+      # Mount the app folder so code changes reflect without rebuilding (dev only)
+      - ./app:/app/app
+      # Mount Google credentials file (path set in .env as GOOGLE_CREDENTIALS_PATH)
+      - ./credentials:/app/credentials:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── ngrok (exposes Chatwoot to the internet so Meta can send webhooks) ───
+  # Meta needs a public HTTPS URL to deliver WhatsApp webhook events to Chatwoot.
+  # The agent talks to Chatwoot internally via the Docker network (no public URL needed).
+  # Sign up free at https://ngrok.com and paste your auth token in .env
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: aisales_ngrok
+    restart: unless-stopped
+    depends_on:
+      - chatwoot
+    ports:
+      - "4040:4040"   # ngrok web UI — open http://localhost:4040 to see your public URL
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    command: http chatwoot:3000 --log stdout
 
 volumes:
   postgres_data:
