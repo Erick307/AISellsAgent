@@ -68,17 +68,16 @@ async def chatwoot_webhook(request: Request):
         return {"status": "ignored"}
 
     conversation_id = str(payload.conversation.id)
-    customer_phone = payload.sender.phone_number
+    customer_id = str(payload.sender.id)
 
-    if not customer_phone:
-        # No phone number — can't identify the customer
-        return {"status": "ignored", "reason": "no_phone_number"}
+    if not customer_id:
+        return {"status": "ignored", "reason": "no_sender_id"}
 
     message_content = payload.content
 
     # Check escalation resume condition
     graph = graph_manager.graph
-    config = {"configurable": {"thread_id": customer_phone}}
+    config = {"configurable": {"thread_id": customer_id}}
     current_state = await graph.aget_state(config)
 
     is_escalated = (
@@ -106,7 +105,7 @@ async def chatwoot_webhook(request: Request):
 
     # Start a new debounce timer
     task = asyncio.create_task(
-        _debounced_process(conversation_id, customer_phone, message_content)
+        _debounced_process(conversation_id, customer_id, message_content)
     )
     _debounce_timers[conversation_id] = task
 
@@ -115,19 +114,19 @@ async def chatwoot_webhook(request: Request):
 
 async def _debounced_process(
     conversation_id: str,
-    customer_phone: str,
+    customer_id: str,
     message: str,
 ):
     """Waits for the debounce window, then runs the LangGraph graph."""
     await asyncio.sleep(settings.message_debounce_seconds)
 
     graph = graph_manager.graph
-    config = {"configurable": {"thread_id": customer_phone}}
+    config = {"configurable": {"thread_id": customer_id}}
 
     state = {
         "messages": [{"role": "user", "content": message}],
         "conversation_id": conversation_id,
-        "customer_phone": customer_phone,
+        "customer_id": customer_id,
     }
 
     result = await graph.ainvoke(state, config=config)

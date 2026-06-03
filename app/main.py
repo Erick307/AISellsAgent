@@ -37,7 +37,7 @@ async def chat(req: ChatRequest):
     state = {
         "messages": [{"role": "user", "content": req.message}],
         "conversation_id": "dev-chat",
-        "customer_phone": req.phone,
+        "customer_id": req.phone,
     }
 
     result = await graph.ainvoke(state, config=config)
