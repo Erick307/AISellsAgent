@@ -31,7 +31,7 @@ class ChatwootWebhookPayload(BaseModel):
     content: Optional[str] = None
     message_type: Optional[str] = None   # "incoming" | "outgoing" | "activity"
     content_type: Optional[str] = None
-    created_at: Optional[int] = None
+    created_at: Optional[str] = None
     sender: Optional[ChatwootSender] = None
     inbox: Optional[ChatwootInbox] = None
     conversation: Optional[ChatwootConversation] = None

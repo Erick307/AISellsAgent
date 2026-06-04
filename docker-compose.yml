@@ -44,7 +44,7 @@ services:
     environment:
       RAILS_ENV: production
       SECRET_KEY_BASE: f0def45d613eb2a8ba738f619759b1071ba7b1d3950240e26abdf043267d796ee5d54eec31abbb3e0bd6d00f423be89e217cef912745b3f5aeea7426a954b5a9
-      FRONTEND_URL: http://localhost:3000
+      FRONTEND_URL: https://prissy-draw-dill.ngrok-free.dev
 
       # Postgres (Chatwoot uses its own DB)
       DATABASE_URL: postgres://aisales:aisales@postgres:5432/chatwoot_production

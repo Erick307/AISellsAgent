@@ -1,12 +1,15 @@
 import asyncio
 import hashlib
 import hmac
+import logging
 import time
 from fastapi import APIRouter, Request, HTTPException
 from app.config import settings
 from app.agents.graph import graph_manager
 from app.models.schemas import ChatwootWebhookPayload
 from app.services.chatwoot import send_message
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -33,16 +36,18 @@ async def chatwoot_webhook(request: Request):
     raw_body = await request.body()
     signature = request.headers.get("X-Chatwoot-Signature", "")
 
-    if not verify_signature(raw_body, signature):
+    # Only verify signature when Chatwoot sends one (regular webhooks don't include it)
+    if signature and not verify_signature(raw_body, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     data = await request.json()
+    logger.info("Webhook received: event=%s type=%s", data.get("event"), data.get("message_type"))
 
     # Parse and validate the payload with Pydantic
     try:
         payload = ChatwootWebhookPayload(**data)
-    except Exception:
-        # Unknown payload shape — ignore gracefully
+    except Exception as e:
+        logger.warning("Payload parse failed: %s", e)
         return {"status": "ignored"}
 
     # Track last human agent activity for escalation resume logic
@@ -118,25 +123,31 @@ async def _debounced_process(
     message: str,
 ):
     """Waits for the debounce window, then runs the LangGraph graph."""
-    await asyncio.sleep(settings.message_debounce_seconds)
+    try:
+        await asyncio.sleep(settings.message_debounce_seconds)
 
-    graph = graph_manager.graph
-    config = {"configurable": {"thread_id": customer_id}}
+        logger.info("Processing message for conversation %s", conversation_id)
 
-    state = {
-        "messages": [{"role": "user", "content": message}],
-        "conversation_id": conversation_id,
-        "customer_id": customer_id,
-    }
+        graph = graph_manager.graph
+        config = {"configurable": {"thread_id": customer_id}}
 
-    result = await graph.ainvoke(state, config=config)
+        state = {
+            "messages": [{"role": "user", "content": message}],
+            "conversation_id": conversation_id,
+            "customer_id": customer_id,
+        }
 
-    # Extract the last AI message and send it via Chatwoot
-    last_message = result["messages"][-1]
-    response_text = (
-        last_message.content
-        if hasattr(last_message, "content")
-        else str(last_message)
-    )
+        result = await graph.ainvoke(state, config=config)
 
-    await send_message(conversation_id, response_text)
+        # Extract the last AI message and send it via Chatwoot
+        last_message = result["messages"][-1]
+        response_text = (
+            last_message.content
+            if hasattr(last_message, "content")
+            else str(last_message)
+        )
+
+        logger.info("Sending reply to conversation %s", conversation_id)
+        await send_message(conversation_id, response_text)
+    except Exception:
+        logger.exception("Error processing message for conversation %s", conversation_id)
