@@ -15,8 +15,9 @@ class Settings(BaseSettings):
     chatwoot_webhook_secret: str
     chatwoot_account_id: int = 1
 
-    # Google Drive
-    google_credentials_path: str  # Path to OAuth/Service Account JSON file
+    # Google Drive (OAuth)
+    google_credentials_path: str = "credentials/credentials.json"  # OAuth client JSON from Google Cloud
+    google_token_path: str = "credentials/token.json"  # Generated after running auth_google.py
 
     # Postgres
     postgres_url: str

@@ -102,7 +102,7 @@ services:
       # Mount the app folder so code changes reflect without rebuilding (dev only)
       - ./app:/app/app
       # Mount Google credentials file (path set in .env as GOOGLE_CREDENTIALS_PATH)
-      - ./credentials:/app/credentials:ro
+      - ./credentials:/app/credentials
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s
